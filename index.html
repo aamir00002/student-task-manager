@@ -1,0 +1,220 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Task Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #93c5fd, #3b82f6);
+      min-height: 100vh;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .task-manager {
+      background: white;
+      border-radius: 1rem;
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+      padding: 2rem;
+      width: 100%;
+      max-width: 600px;
+    }
+    .task-item {
+      transition: all 0.3s ease;
+    }
+    .task-item:hover {
+      transform: translateX(5px);
+    }
+    .completed {
+      opacity: 0.7;
+      text-decoration: line-through;
+    }
+  </style>
+</head>
+<body>
+  <div class="task-manager">
+    <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Student Task Manager</h1>
+    <div class="mb-4 flex gap-2">
+      <input
+        id="taskInput"
+        type="text"
+        placeholder="Add a new task..."
+        class="flex-1 p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+      >
+      <button
+        onclick="addTask()"
+        class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+      >
+        Add
+      </button>
+    </div>
+    <div class="mb-4 flex justify-between">
+      <div class="flex gap-2">
+        <button
+          onclick="filterTasks('all')"
+          class="bg-gray-200 px-3 py-1 rounded-lg hover:bg-gray-300"
+        >
+          All
+        </button>
+        <button
+          onclick="filterTasks('pending')"
+          class="bg-gray-200 px-3 py-1 rounded-lg hover:bg-gray-300"
+        >
+          Pending
+        </button>
+        <button
+          onclick="filterTasks('completed')"
+          class="bg-gray-200 px-3 py-1 rounded-lg hover:bg-gray-300"
+        >
+          Completed
+        </button>
+      </div>
+      <button
+        onclick="clearCompleted()"
+        class="text-red-600 hover:text-red-800"
+      >
+        Clear Completed
+      </button>
+    </div>
+    <ul id="taskList" class="space-y-2"></ul>
+  </div>
+
+  <script>
+    let tasks = JSON.parse(localStorage.getItem('tasks')) || [];
+    let currentFilter = 'all';
+
+    function saveTasks() {
+      localStorage.setItem('tasks', JSON.stringify(tasks));
+    }
+
+    function addTask() {
+      const taskInput = document.getElementById('taskInput');
+      const taskText = taskInput.value.trim();
+      if (taskText === '') return;
+
+      const task = {
+        id: Date.now(),
+        text: taskText,
+        completed: false,
+      };
+      tasks.push(task);
+      saveTasks();
+      taskInput.value = '';
+      renderTasks();
+    }
+
+    function toggleTask(id) {
+      tasks = tasks.map(task =>
+        task.id === id ? { ...task, completed: !task.completed } : task
+      );
+      saveTasks();
+      renderTasks();
+    }
+
+    function deleteTask(id) {
+      tasks = tasks.filter(task => task.id !== id);
+      saveTasks();
+      renderTasks();
+    }
+
+    function clearCompleted() {
+      tasks = tasks.filter(task => !task.completed);
+      saveTasks();
+      renderTasks();
+    }
+
+    function filterTasks(filter) {
+      currentFilter = filter;
+      renderTasks();
+    }
+
+    function renderTasks() {
+      const taskList = document.getElementById('taskList');
+      taskList.innerHTML = '';
+
+      const filteredTasks = tasks.filter(task => {
+        if (currentFilter === 'pending') return !task.completed;
+        if (currentFilter === 'completed') return task.completed;
+        return true;
+      });
+
+      filteredTasks.forEach(task => {
+        const li = document.createElement('li');
+        li.className = `task-item flex justify-between items-center p-3 bg-gray-50 rounded-lg ${
+          task.completed ? 'completed' : ''
+        }`;
+        li.innerHTML = `
+          <div class="flex items-center gap-2">
+            <input
+              type="checkbox"
+              ${task.completed ? 'checked' : ''}
+              onchange="toggleTask(${task.id})"
+              class="h-5 w-5 text-blue-600"
+            >
+            <span>${task.text}</span>
+          </div>
+          <button
+            onclick="deleteTask(${task.id})"
+            class="text-red-500 hover:text-red-700"
+          >
+            Delete
+          </button>
+        `;
+        taskList.appendChild(li);
+      });
+    }
+
+    // Initialize
+    renderTasks();
+
+    // Allow adding task with Enter key
+    document.getElementById('taskInput').addEventListener('keypress', e => {
+      if (e.key === 'Enter') addTask();
+    });
+  </script>
+</body>
+</html>
